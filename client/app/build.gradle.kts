@@ -1,4 +1,7 @@
-plugins { id("com.android.application") }
+plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+}
 
 android {
     namespace = "io.github.hayitsjose.deskray"
@@ -21,8 +24,17 @@ android {
             version = "3.22.1"
         }
     }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    kotlinOptions { jvmTarget = "17" }
+    // BouncyCastle jars each carry the same OSGi manifest; Android doesn't need it.
+    packaging { resources { excludes += "META-INF/versions/9/OSGI-INF/MANIFEST.MF" } }
 }
 
 dependencies {
     implementation("org.khronos.openxr:openxr_loader_for_android:1.1.47")
+    // Self-signed client certificate generation for pairing (Android has no cert builder API).
+    implementation("org.bouncycastle:bcpkix-jdk18on:1.80")
 }

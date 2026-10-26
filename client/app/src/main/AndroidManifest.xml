@@ -14,10 +14,13 @@
   <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"/>
   <uses-permission android:name="android.permission.WAKE_LOCK"/>
 
-  <application android:label="Deskray" android:hasCode="false">
+  <!-- Cleartext: the GameStream protocol serves /serverinfo and /pair over plain
+       HTTP on 47989 (pairing is protected by the PIN-derived crypto); everything
+       after pairing uses mutual TLS with the pinned host certificate. -->
+  <application android:label="Deskray" android:usesCleartextTraffic="true">
     <meta-data android:name="com.oculus.supportedDevices" android:value="quest3|quest3s|questpro|quest2"/>
 
-    <activity android:name="android.app.NativeActivity"
+    <activity android:name=".MainActivity"
         android:exported="true"
         android:excludeFromRecents="true"
         android:launchMode="singleTask"

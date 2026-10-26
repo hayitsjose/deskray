@@ -1,0 +1,7 @@
+[submodule "client/third_party/moonlight-common-c"]
+	path = client/third_party/moonlight-common-c
+	url = https://github.com/moonlight-stream/moonlight-common-c
+[submodule "client/third_party/mbedtls"]
+	path = client/third_party/mbedtls
+	url = https://github.com/Mbed-TLS/mbedtls
+	shallow = true
