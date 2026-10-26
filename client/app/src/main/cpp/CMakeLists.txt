@@ -10,6 +10,11 @@ string(APPEND CMAKE_CXX_FLAGS_DEBUG " -O2")
 
 set(THIRD_PARTY ${CMAKE_CURRENT_SOURCE_DIR}/../../../../third_party)
 
+# Builds shouldn't embed the builder's absolute paths (__FILE__ in asserts and
+# logs): map the repo root to "." for every target, third-party ones included.
+get_filename_component(REPO_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../../../.. ABSOLUTE)
+add_compile_options(-ffile-prefix-map=${REPO_ROOT}=.)
+
 find_package(OpenXR REQUIRED CONFIG)   # prefab package from openxr_loader_for_android
 
 add_library(native_app_glue STATIC
