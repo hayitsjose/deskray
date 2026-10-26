@@ -13,20 +13,23 @@ jobs:
   apk:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: recursive
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
           cache: gradle
 
-      - uses: android-actions/setup-android@v3
-
+      # The runner image ships the Android SDK; use its sdkmanager directly.
       - name: Install SDK packages
-        run: sdkmanager "platforms;android-34" "build-tools;34.0.0" "ndk;27.2.12479018" "cmake;3.22.1"
+        run: |
+          sdkm=$(ls "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -1)
+          yes | "$sdkm" --licenses > /dev/null
+          "$sdkm" "platforms;android-34" "build-tools;34.0.0" "ndk;27.2.12479018" "cmake;3.22.1" > /dev/null
+          echo "sdk.dir=$ANDROID_HOME" > client/local.properties
 
       # v1.2.3 -> versionName 1.2.3, versionCode 1002003
       - name: Version from tag
