@@ -21,6 +21,7 @@ import android.widget.ScrollView
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
+import io.github.hayitsjose.deskray.BuildConfig
 import io.github.hayitsjose.deskray.ImmersiveActivity
 import io.github.hayitsjose.deskray.net.HostRepository
 import io.github.hayitsjose.deskray.net.HostStore
@@ -82,9 +83,16 @@ class HomeActivity : Activity() {
         list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         root.addView(ScrollView(this).apply { addView(list) }, LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f))
 
-        root.addView(Button(this).apply {
-            text = "Add machine"
-            setOnClickListener { promptAddHost() }
+        root.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(Button(this@HomeActivity).apply {
+                text = "Add machine"
+                setOnClickListener { promptAddHost() }
+            })
+            addView(Button(this@HomeActivity).apply {
+                text = "About"
+                setOnClickListener { showAbout() }
+            })
         }, LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { topMargin = dp(12) })
 
         root.addView(settingsRow(), LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(16) })
@@ -262,6 +270,22 @@ class HomeActivity : Activity() {
                 refreshList()
             }
             .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    // GPL-3.0: tell users where the source is and what the app is built on.
+    private fun showAbout() {
+        AlertDialog.Builder(this)
+            .setTitle("Deskray ${BuildConfig.VERSION_NAME}")
+            .setMessage(
+                "Low-latency remote desktop from Quest to your Linux machines.\n\n" +
+                    "Free software under the GNU GPL v3. Source code:\n${BuildConfig.SOURCE_URL}\n\n" +
+                    "Built on moonlight-common-c (GPL-3.0) and streams from Sunshine (GPL-3.0). " +
+                    "Also uses Mbed TLS (Apache-2.0), Opus (BSD-3-Clause), ENet (MIT), " +
+                    "BouncyCastle (MIT) and the Khronos OpenXR loader (Apache-2.0).\n\n" +
+                    "Not affiliated with Moonlight, Sunshine, Meta or NVIDIA.",
+            )
+            .setPositiveButton("Close", null)
             .show()
     }
 

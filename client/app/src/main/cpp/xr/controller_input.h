@@ -70,7 +70,9 @@ class ControllerInput {
   bool mouseOwns_ = false;
   float anchorU_ = 0.0f, anchorV_ = 0.0f;
 
-  // Diagnostics, logged every 2 s.
+  // Diagnostics, logged every 2 s in debug builds.
+#ifndef NDEBUG
   XrTime nextStatsLog_ = 0;
+#endif
   int positionsSent_ = 0, buttonsSent_ = 0;
 };

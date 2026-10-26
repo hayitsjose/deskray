@@ -218,11 +218,13 @@ void ControllerInput::update(XrSpace base, XrTime time, const ScreenGeometry& sc
     filterU_.reset();
     filterV_.reset();
   }
+#ifndef NDEBUG
   if (time >= nextStatsLog_) {
     LOGI("input: %s hand, tracked=%d on_screen=%d uv=(%.3f, %.3f) connected=%d sent pos=%d buttons=%d",
          active_ == kRight ? "right" : "left", tracked, onScreen, u, v, connected, positionsSent_, buttonsSent_);
     nextStatsLog_ = time + 2'000'000'000;
   }
+#endif
   if (onScreen && !mouseOwns_) {
     const double fu = filterU_.filter(u, dt), fv = filterV_.filter(v, dt);
     const int x = static_cast<int>(fu * (streamW - 1) + 0.5);

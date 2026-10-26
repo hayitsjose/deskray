@@ -1,0 +1,70 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: write  # publishing releases on tags
+
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install SDK packages
+        run: sdkmanager "platforms;android-34" "build-tools;34.0.0" "ndk;27.2.12479018" "cmake;3.22.1"
+
+      # v1.2.3 -> versionName 1.2.3, versionCode 1002003
+      - name: Version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          IFS=. read -r major minor patch <<< "$v"
+          echo "VERSION=$v" >> "$GITHUB_ENV"
+          echo "VERSION_ARGS=-Pdeskray.versionName=$v -Pdeskray.versionCode=$((major * 1000000 + minor * 1000 + ${patch:-0}))" >> "$GITHUB_ENV"
+
+      - name: Release keystore
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          KEYSTORE_B64: ${{ secrets.DESKRAY_KEYSTORE_B64 }}
+        run: |
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "DESKRAY_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+
+      - name: Build
+        working-directory: client
+        env:
+          DESKRAY_KEYSTORE_PASSWORD: ${{ secrets.DESKRAY_KEYSTORE_PASSWORD }}
+          DESKRAY_KEY_PASSWORD: ${{ secrets.DESKRAY_KEYSTORE_PASSWORD }}
+        run: |
+          ./gradlew --no-daemon assembleDebug $VERSION_ARGS
+          if [ -n "${DESKRAY_KEYSTORE:-}" ]; then ./gradlew --no-daemon assembleRelease $VERSION_ARGS; fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deskray-debug-apk
+          path: client/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp client/app/build/outputs/apk/release/app-release.apk "deskray-$VERSION.apk"
+          sha256sum "deskray-$VERSION.apk" > "deskray-$VERSION.apk.sha256"
+          gh release create "$GITHUB_REF_NAME" "deskray-$VERSION.apk" "deskray-$VERSION.apk.sha256" \
+            --title "Deskray $VERSION" --generate-notes
