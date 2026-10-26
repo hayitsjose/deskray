@@ -70,6 +70,14 @@ void android_main(android_app* app) {
       continue;
     }
     if (xr.sessionRunning()) xr.renderFrame();
+    if (xr.consumeMenuPress()) {
+      // ImmersiveActivity.onMenuButton() takes the user back to the Home panel.
+      jclass cls = env->GetObjectClass(app->activity->clazz);
+      jmethodID onMenu = env->GetMethodID(cls, "onMenuButton", "()V");
+      if (onMenu) env->CallVoidMethod(app->activity->clazz, onMenu);
+      if (env->ExceptionCheck()) env->ExceptionClear();
+      env->DeleteLocalRef(cls);
+    }
   }
 
   xr.shutdown();

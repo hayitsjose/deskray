@@ -1,6 +1,7 @@
 // moonlight-common-c glue: video goes to the zero-copy MediaCodec decoder,
 // audio to Opus + AAudio.
 #include <android/log.h>
+#include <android/native_window_jni.h>
 #include <jni.h>
 
 #include <Limelight.h>
@@ -11,6 +12,7 @@
 #include <string>
 
 #include "stream/audio_renderer.h"
+#include "stream/keyboard.h"
 #include "stream/stream_state.h"
 #include "stream/video_decoder.h"
 #include "util/log.h"
@@ -19,6 +21,8 @@ namespace {
 
 std::atomic<uint64_t> gFrames{0};
 std::atomic<bool> gConnected{false};
+std::atomic<int> gStreamW{1920};
+std::atomic<int> gStreamH{1080};
 
 // SERVER_INFORMATION holds raw pointers; keep the strings alive for the session.
 struct SessionStrings {
@@ -85,6 +89,11 @@ std::string toString(JNIEnv* env, jstring s) {
 }  // namespace
 
 bool streamConnected() { return gConnected.load(); }
+
+void streamSize(int* width, int* height) {
+  *width = gStreamW.load();
+  *height = gStreamH.load();
+}
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_io_github_hayitsjose_deskray_stream_NativeBridge_launchQueryParameters(JNIEnv* env, jobject) {
@@ -162,4 +171,49 @@ Java_io_github_hayitsjose_deskray_stream_NativeBridge_stopStream(JNIEnv*, jobjec
   gConnected = false;
   LiStopConnection();
   LOGI("stream stopped; %llu video frames received", static_cast<unsigned long long>(gFrames.load()));
+}
+
+#define BRIDGE(ret, name) extern "C" JNIEXPORT ret JNICALL Java_io_github_hayitsjose_deskray_stream_NativeBridge_##name
+
+BRIDGE(jboolean, isConnected)(JNIEnv*, jobject) { return gConnected.load(); }
+
+BRIDGE(void, setStreamSize)(JNIEnv*, jobject, jint width, jint height) {
+  gStreamW = width;
+  gStreamH = height;
+}
+
+BRIDGE(void, setVideoSurface)(JNIEnv* env, jobject, jobject surface) {
+  VideoDecoder& decoder = VideoDecoder::instance();
+  if (!surface) {
+    decoder.setRenderAllowed(false);
+    decoder.setWindow(nullptr);
+    return;
+  }
+  ANativeWindow* window = ANativeWindow_fromSurface(env, surface);
+  if (!window) {
+    LOGE("windowed: ANativeWindow_fromSurface failed");
+    return;
+  }
+  decoder.setWindow(window);  // takes its own reference
+  ANativeWindow_release(window);
+  decoder.setRenderAllowed(true);
+}
+
+BRIDGE(void, sendMousePosition)(JNIEnv*, jobject, jint x, jint y, jint width, jint height) {
+  if (gConnected) LiSendMousePositionEvent(static_cast<short>(x), static_cast<short>(y), static_cast<short>(width),
+                                           static_cast<short>(height));
+}
+
+BRIDGE(void, sendMouseButton)(JNIEnv*, jobject, jboolean down, jint button) {
+  if (gConnected) LiSendMouseButtonEvent(down ? BUTTON_ACTION_PRESS : BUTTON_ACTION_RELEASE, button);
+}
+
+BRIDGE(void, sendScroll)(JNIEnv*, jobject, jint vertical, jint horizontal) {
+  if (!gConnected) return;
+  if (vertical) LiSendHighResScrollEvent(static_cast<short>(vertical));
+  if (horizontal) LiSendHighResHScrollEvent(static_cast<short>(horizontal));
+}
+
+BRIDGE(jboolean, sendKey)(JNIEnv*, jobject, jint keyCode, jint action, jint metaState, jint repeatCount) {
+  return forwardKey(keyCode, action, metaState, repeatCount);
 }

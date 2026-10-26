@@ -7,6 +7,7 @@
 #include <cstring>
 #include <string>
 
+#include "stream/stream_state.h"
 #include "stream/video_decoder.h"
 
 namespace {
@@ -17,9 +18,6 @@ constexpr int32_t kPanelH = 1080;
 constexpr float kPanelWidthM = 1.6f;
 constexpr float kPanelRadiusM = 1.4f;
 constexpr float kPanelDropM = 0.1f;
-// Video surface size; matches the stream resolution DevSession requests.
-constexpr int32_t kVideoW = 1920;
-constexpr int32_t kVideoH = 1080;
 
 // Scissor-clear one rectangle. Rect origin is bottom-left (GL convention,
 // which is also how OpenXR presents GLES swapchain images).
@@ -33,6 +31,7 @@ void fillRect(int x, int y, int w, int h, float r, float g, float b) {
 
 bool XrApp::init(android_app* app) {
   vm_ = app->activity->vm;
+  streamSize(&videoW_, &videoH_);
   if (!createInstance(app)) return false;
   if (!egl_.init()) return false;
   if (!createSession()) return false;
@@ -199,12 +198,12 @@ bool XrApp::createVideoSwapchain() {
   // The spec requires format, sample/face/array/mip counts to be zero here:
   // the producer (MediaCodec) decides the buffer format and may resize.
   XrSwapchainCreateInfo ci{XR_TYPE_SWAPCHAIN_CREATE_INFO};
-  ci.width = kVideoW;
-  ci.height = kVideoH;
+  ci.width = videoW_;
+  ci.height = videoH_;
   jobject surface = nullptr;
   XR_CHECK(createSurface(session_, &ci, &video_.handle, &surface));
-  video_.width = kVideoW;
-  video_.height = kVideoH;
+  video_.width = videoW_;
+  video_.height = videoH_;
 
   JNIEnv* env = nullptr;
   if (vm_->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) != JNI_OK || !surface) {
@@ -218,7 +217,7 @@ bool XrApp::createVideoSwapchain() {
   }
   VideoDecoder::instance().setWindow(window);  // takes its own reference
   ANativeWindow_release(window);
-  LOGI("video surface swapchain %dx%d ready", kVideoW, kVideoH);
+  LOGI("video surface swapchain %dx%d ready", videoW_, videoH_);
   return true;
 }
 
@@ -383,8 +382,8 @@ void XrApp::renderFrame() {
 
   if (fs.shouldRender && state_ == XR_SESSION_STATE_FOCUSED && hasCylinder_) {
     const ScreenGeometry screen{{0.0f, -kPanelDropM, 0.0f}, kPanelRadiusM, kPanelWidthM / kPanelRadiusM,
-                                static_cast<float>(kVideoW) / kVideoH};
-    controllers_.update(localSpace_, fs.predictedDisplayTime, screen, kVideoW, kVideoH);
+                                static_cast<float>(videoW_) / videoH_};
+    controllers_.update(localSpace_, fs.predictedDisplayTime, screen, videoW_, videoH_);
   }
 
   if (fs.shouldRender) {

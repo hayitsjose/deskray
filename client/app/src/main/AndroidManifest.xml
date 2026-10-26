@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- A Horizon OS hybrid app: 2D panel activities (machine list, windowed stream)
+     plus one immersive OpenXR activity (curved screen). One mode runs at a time. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:horizonos="http://schemas.horizonos/sdk"
     android:installLocation="auto">
+
+  <horizonos:uses-horizonos-sdk horizonos:minSdkVersion="69" horizonos:targetSdkVersion="69"/>
 
   <uses-feature android:name="android.hardware.vr.headtracking" android:required="true" android:version="1"/>
   <uses-feature android:name="oculus.software.handtracking" android:required="false"/>
@@ -17,20 +22,52 @@
   <!-- Cleartext: the GameStream protocol serves /serverinfo and /pair over plain
        HTTP on 47989 (pairing is protected by the PIN-derived crypto); everything
        after pairing uses mutual TLS with the pinned host certificate. -->
-  <application android:label="Deskray" android:usesCleartextTraffic="true">
+  <application
+      android:label="Deskray"
+      android:theme="@android:style/Theme.Material.NoActionBar"
+      android:usesCleartextTraffic="true">
     <meta-data android:name="com.oculus.supportedDevices" android:value="quest3|quest3s|questpro|quest2"/>
 
-    <activity android:name=".MainActivity"
+    <!-- Machine list: the launcher panel. -->
+    <activity android:name=".ui.HomeActivity"
+        android:exported="true"
+        android:resizeableActivity="true">
+      <layout android:defaultWidth="880dp" android:defaultHeight="560dp"/>
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <category android:name="com.oculus.intent.category.2D"/>
+        <category android:name="android.intent.category.LAUNCHER"/>
+      </intent-filter>
+    </activity>
+
+    <!-- Windowed stream: a resizable panel. Resizing must not recreate the
+         activity (that would drop the stream). -->
+    <activity android:name=".ui.WindowStreamActivity"
+        android:exported="false"
+        android:resizeableActivity="true"
+        android:configChanges="density|keyboard|keyboardHidden|navigation|orientation|screenLayout|screenSize|smallestScreenSize|uiMode">
+      <layout android:defaultWidth="1280dp" android:defaultHeight="720dp" android:minWidth="480dp" android:minHeight="270dp"/>
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <category android:name="com.oculus.intent.category.2D"/>
+      </intent-filter>
+    </activity>
+
+    <!-- Curved screen: OpenXR in C++ (NativeActivity). -->
+    <activity android:name=".ImmersiveActivity"
         android:exported="true"
         android:excludeFromRecents="true"
         android:launchMode="singleTask"
         android:screenOrientation="landscape"
+        android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
         android:configChanges="density|keyboard|keyboardHidden|navigation|orientation|screenLayout|screenSize|uiMode">
       <meta-data android:name="android.app.lib_name" android:value="deskray"/>
       <intent-filter>
         <action android:name="android.intent.action.MAIN"/>
+        <category android:name="android.intent.category.DEFAULT"/>
         <category android:name="com.oculus.intent.category.VR"/>
-        <category android:name="android.intent.category.LAUNCHER"/>
       </intent-filter>
     </activity>
   </application>

@@ -13,8 +13,8 @@ struct ScreenGeometry {
 
 // Touch controllers as a desktop mouse. The aim ray of the active hand is an
 // absolute pointer on the screen; trigger = left button, A/X = right,
-// thumbstick click = middle, thumbstick = wheel. Pulling either trigger makes
-// that hand the active one.
+// thumbstick click = middle, thumbstick = wheel, B/Y = app menu. Pulling either
+// trigger makes that hand the active one.
 class ControllerInput {
  public:
   bool init(XrInstance instance, XrSession session);
@@ -22,6 +22,9 @@ class ControllerInput {
 
   // Once per frame while the session is FOCUSED (actions only sync then).
   void update(XrSpace base, XrTime time, const ScreenGeometry& screen, int streamW, int streamH);
+
+  // True once per B/Y press (either hand), whether or not a stream is running.
+  bool consumeMenuPress();
 
  private:
   enum Hand { kLeft = 0, kRight = 1 };
@@ -31,6 +34,7 @@ class ControllerInput {
     bool triggerDown = false;
     bool primaryDown = false;
     bool thumbClickDown = false;
+    bool menuDown = false;
   };
 
   bool createAction(const char* name, XrActionType type, XrAction* out);
@@ -47,6 +51,8 @@ class ControllerInput {
   XrAction thumbClick_ = XR_NULL_HANDLE;
   XrAction thumbstick_ = XR_NULL_HANDLE;
   XrAction haptic_ = XR_NULL_HANDLE;
+  XrAction menu_ = XR_NULL_HANDLE;        // B (right) / Y (left)
+  bool menuPressed_ = false;
   XrPath handPath_[2] = {XR_NULL_PATH, XR_NULL_PATH};
   HandState hands_[2];
   Hand active_ = kRight;

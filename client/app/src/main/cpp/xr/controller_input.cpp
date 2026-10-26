@@ -52,7 +52,8 @@ bool ControllerInput::init(XrInstance instance, XrSession session) {
       !createAction("primary", XR_ACTION_TYPE_BOOLEAN_INPUT, &primary_) ||
       !createAction("thumb_click", XR_ACTION_TYPE_BOOLEAN_INPUT, &thumbClick_) ||
       !createAction("thumbstick", XR_ACTION_TYPE_VECTOR2F_INPUT, &thumbstick_) ||
-      !createAction("haptic", XR_ACTION_TYPE_VIBRATION_OUTPUT, &haptic_))
+      !createAction("haptic", XR_ACTION_TYPE_VIBRATION_OUTPUT, &haptic_) ||
+      !createAction("menu", XR_ACTION_TYPE_BOOLEAN_INPUT, &menu_))
     return false;
 
   struct Binding { XrAction action; const char* path; };
@@ -69,6 +70,8 @@ bool ControllerInput::init(XrInstance instance, XrSession session) {
       {thumbstick_, "/user/hand/right/input/thumbstick"},
       {haptic_, "/user/hand/left/output/haptic"},
       {haptic_, "/user/hand/right/output/haptic"},
+      {menu_, "/user/hand/left/input/y/click"},
+      {menu_, "/user/hand/right/input/b/click"},
   };
   XrActionSuggestedBinding suggested[sizeof(bindings) / sizeof(bindings[0])];
   for (size_t i = 0; i < sizeof(bindings) / sizeof(bindings[0]); ++i) {
@@ -127,6 +130,12 @@ bool ControllerInput::hitScreen(const XrPosef& aim, const ScreenGeometry& s, flo
   return *u >= 0.0f && *u <= 1.0f && *v >= 0.0f && *v <= 1.0f;
 }
 
+bool ControllerInput::consumeMenuPress() {
+  const bool pressed = menuPressed_;
+  menuPressed_ = false;
+  return pressed;
+}
+
 void ControllerInput::pulse(Hand hand) {
   XrHapticActionInfo hi{XR_TYPE_HAPTIC_ACTION_INFO};
   hi.action = haptic_;
@@ -156,6 +165,18 @@ void ControllerInput::update(XrSpace base, XrTime time, const ScreenGeometry& sc
   const double dt = lastTime_ ? (time - lastTime_) / 1e9 : 0.0;
   lastTime_ = time;
   const bool connected = streamConnected();
+
+  // Menu works on either hand, streaming or not: it's the way out.
+  for (int h = 0; h < 2; ++h) {
+    XrActionStateGetInfo gi{XR_TYPE_ACTION_STATE_GET_INFO};
+    gi.action = menu_;
+    gi.subactionPath = handPath_[h];
+    XrActionStateBoolean st{XR_TYPE_ACTION_STATE_BOOLEAN};
+    xrGetActionStateBoolean(session_, &gi, &st);
+    const bool down = st.isActive && st.currentState;
+    if (down && !hands_[h].menuDown) menuPressed_ = true;
+    hands_[h].menuDown = down;
+  }
 
   // Triggers first: pulling one selects that hand.
   bool triggerNow[2];

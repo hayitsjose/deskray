@@ -80,21 +80,25 @@ char toModifiers(int32_t meta) {
 
 }  // namespace
 
-bool forwardKeyEvent(const AInputEvent* event) {
+bool forwardKey(int32_t keyCode, int32_t action, int32_t metaState, int32_t repeatCount) {
   if (!streamConnected()) return false;
-  const short vk = toVirtualKey(AKeyEvent_getKeyCode(event));
+  const short vk = toVirtualKey(keyCode);
   if (vk == 0) return false;
 
-  const int32_t action = AKeyEvent_getAction(event);
   if (action == AKEY_EVENT_ACTION_DOWN) {
     // The host repeats held keys itself; Android's repeats would double them.
-    if (AKeyEvent_getRepeatCount(event) > 0) return true;
-    LiSendKeyboardEvent(static_cast<short>(0x8000 | vk), KEY_ACTION_DOWN, toModifiers(AKeyEvent_getMetaState(event)));
+    if (repeatCount > 0) return true;
+    LiSendKeyboardEvent(static_cast<short>(0x8000 | vk), KEY_ACTION_DOWN, toModifiers(metaState));
     return true;
   }
   if (action == AKEY_EVENT_ACTION_UP) {
-    LiSendKeyboardEvent(static_cast<short>(0x8000 | vk), KEY_ACTION_UP, toModifiers(AKeyEvent_getMetaState(event)));
+    LiSendKeyboardEvent(static_cast<short>(0x8000 | vk), KEY_ACTION_UP, toModifiers(metaState));
     return true;
   }
   return false;
+}
+
+bool forwardKeyEvent(const AInputEvent* event) {
+  return forwardKey(AKeyEvent_getKeyCode(event), AKeyEvent_getAction(event), AKeyEvent_getMetaState(event),
+                    AKeyEvent_getRepeatCount(event));
 }

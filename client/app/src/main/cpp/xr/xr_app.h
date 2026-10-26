@@ -21,6 +21,9 @@ class XrApp {
   bool sessionRunning() const { return sessionRunning_; }
   void renderFrame();
 
+  // True once per B/Y press; main.cpp hands it to the Java activity.
+  bool consumeMenuPress() { return controllers_.consumeMenuPress(); }
+
  private:
   struct Swapchain {
     XrSwapchain handle = XR_NULL_HANDLE;
@@ -56,6 +59,7 @@ class XrApp {
   Swapchain panel_;  // GL test pattern
   Swapchain video_;  // compositor-owned surface MediaCodec decodes into
   JavaVM* vm_ = nullptr;
+  int32_t videoW_ = 1920, videoH_ = 1080;  // stream size, from the UI settings
 
   XrPassthroughFB passthrough_ = XR_NULL_HANDLE;
   XrPassthroughLayerFB passthroughLayer_ = XR_NULL_HANDLE;
