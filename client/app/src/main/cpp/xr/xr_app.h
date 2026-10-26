@@ -6,9 +6,9 @@
 
 struct android_app;
 
-// Owns the OpenXR instance/session and draws the Phase 2 scene: passthrough
-// plus one curved test panel. Later phases put the video swapchain on that
-// cylinder instead of the GL test pattern.
+// Owns the OpenXR instance/session and the scene: passthrough plus one curved
+// screen, showing the stream's surface swapchain when video is flowing and a
+// GL test pattern otherwise.
 class XrApp {
  public:
   bool init(android_app* app);
@@ -31,6 +31,7 @@ class XrApp {
   bool createInstance(android_app* app);
   bool createSession();
   bool createPanelSwapchain();
+  bool createVideoSwapchain();
   bool createPassthrough();
   void requestRefreshRate(float hz);
   void handleSessionState(XrSessionState state, bool* exitRequested);
@@ -47,8 +48,12 @@ class XrApp {
   bool hasCylinder_ = false;
   bool hasPassthrough_ = false;
   bool hasRefreshRate_ = false;
+  bool hasSurfaceSwapchain_ = false;
+  bool hasImageLayout_ = false;
 
-  Swapchain panel_;
+  Swapchain panel_;  // GL test pattern
+  Swapchain video_;  // compositor-owned surface MediaCodec decodes into
+  JavaVM* vm_ = nullptr;
 
   XrPassthroughFB passthrough_ = XR_NULL_HANDLE;
   XrPassthroughLayerFB passthroughLayer_ = XR_NULL_HANDLE;

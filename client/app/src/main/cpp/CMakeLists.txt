@@ -31,6 +31,6 @@ target_include_directories(deskray PRIVATE
 target_compile_options(deskray PRIVATE -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers)
 target_link_libraries(deskray
   native_app_glue OpenXR::openxr_loader moonlight-common-c
-  android log EGL GLESv3)
+  android log EGL GLESv3 mediandk)
 # Keep the glue's entry point: nothing references it but the Android loader.
 target_link_options(deskray PRIVATE -u ANativeActivity_onCreate)

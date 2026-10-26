@@ -1,9 +1,13 @@
 #include "xr/xr_app.h"
 
+#include <android/native_window_jni.h>
+
 #include <android_native_app_glue.h>
 
 #include <cstring>
 #include <string>
+
+#include "stream/video_decoder.h"
 
 namespace {
 
@@ -13,6 +17,9 @@ constexpr int32_t kPanelH = 1080;
 constexpr float kPanelWidthM = 1.6f;
 constexpr float kPanelRadiusM = 1.4f;
 constexpr float kPanelDropM = 0.1f;
+// Video surface size; matches the stream resolution DevSession requests.
+constexpr int32_t kVideoW = 1920;
+constexpr int32_t kVideoH = 1080;
 
 // Scissor-clear one rectangle. Rect origin is bottom-left (GL convention,
 // which is also how OpenXR presents GLES swapchain images).
@@ -25,10 +32,15 @@ void fillRect(int x, int y, int w, int h, float r, float g, float b) {
 }  // namespace
 
 bool XrApp::init(android_app* app) {
+  vm_ = app->activity->vm;
   if (!createInstance(app)) return false;
   if (!egl_.init()) return false;
   if (!createSession()) return false;
   if (!createPanelSwapchain()) return false;
+  if (hasSurfaceSwapchain_ && !createVideoSwapchain()) {
+    LOGW("no video surface; streams will not be shown");
+    hasSurfaceSwapchain_ = false;
+  }
   if (hasPassthrough_ && !createPassthrough()) {
     LOGW("passthrough unavailable; continuing with a black background");
     hasPassthrough_ = false;
@@ -67,12 +79,15 @@ bool XrApp::createInstance(android_app* app) {
   hasCylinder_ = has(XR_KHR_COMPOSITION_LAYER_CYLINDER_EXTENSION_NAME);
   hasPassthrough_ = has(XR_FB_PASSTHROUGH_EXTENSION_NAME);
   hasRefreshRate_ = has(XR_FB_DISPLAY_REFRESH_RATE_EXTENSION_NAME);
+  hasSurfaceSwapchain_ = has(XR_KHR_ANDROID_SURFACE_SWAPCHAIN_EXTENSION_NAME);
+  hasImageLayout_ = has(XR_FB_COMPOSITION_LAYER_IMAGE_LAYOUT_EXTENSION_NAME);
   if (hasCylinder_) exts.push_back(XR_KHR_COMPOSITION_LAYER_CYLINDER_EXTENSION_NAME);
   if (hasPassthrough_) exts.push_back(XR_FB_PASSTHROUGH_EXTENSION_NAME);
   if (hasRefreshRate_) exts.push_back(XR_FB_DISPLAY_REFRESH_RATE_EXTENSION_NAME);
-  LOGI("extensions: cylinder=%d passthrough=%d refresh_rate=%d (android_surface_swapchain=%d)",
-       hasCylinder_, hasPassthrough_, hasRefreshRate_,
-       has(XR_KHR_ANDROID_SURFACE_SWAPCHAIN_EXTENSION_NAME));
+  if (hasSurfaceSwapchain_) exts.push_back(XR_KHR_ANDROID_SURFACE_SWAPCHAIN_EXTENSION_NAME);
+  if (hasImageLayout_) exts.push_back(XR_FB_COMPOSITION_LAYER_IMAGE_LAYOUT_EXTENSION_NAME);
+  LOGI("extensions: cylinder=%d passthrough=%d refresh_rate=%d android_surface_swapchain=%d image_layout=%d",
+       hasCylinder_, hasPassthrough_, hasRefreshRate_, hasSurfaceSwapchain_, hasImageLayout_);
 
   XrInstanceCreateInfoAndroidKHR androidInfo{XR_TYPE_INSTANCE_CREATE_INFO_ANDROID_KHR};
   androidInfo.applicationVM = app->activity->vm;
@@ -176,6 +191,36 @@ bool XrApp::createPanelSwapchain() {
   return true;
 }
 
+bool XrApp::createVideoSwapchain() {
+  PFN_xrCreateSwapchainAndroidSurfaceKHR createSurface = nullptr;
+  XR_PROC(instance_, "xrCreateSwapchainAndroidSurfaceKHR", createSurface);
+
+  // The spec requires format, sample/face/array/mip counts to be zero here:
+  // the producer (MediaCodec) decides the buffer format and may resize.
+  XrSwapchainCreateInfo ci{XR_TYPE_SWAPCHAIN_CREATE_INFO};
+  ci.width = kVideoW;
+  ci.height = kVideoH;
+  jobject surface = nullptr;
+  XR_CHECK(createSurface(session_, &ci, &video_.handle, &surface));
+  video_.width = kVideoW;
+  video_.height = kVideoH;
+
+  JNIEnv* env = nullptr;
+  if (vm_->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) != JNI_OK || !surface) {
+    LOGE("video surface: no JNI env or surface");
+    return false;
+  }
+  ANativeWindow* window = ANativeWindow_fromSurface(env, surface);
+  if (!window) {
+    LOGE("video surface: ANativeWindow_fromSurface failed");
+    return false;
+  }
+  VideoDecoder::instance().setWindow(window);  // takes its own reference
+  ANativeWindow_release(window);
+  LOGI("video surface swapchain %dx%d ready", kVideoW, kVideoH);
+  return true;
+}
+
 bool XrApp::createPassthrough() {
   XR_PROC(instance_, "xrCreatePassthroughFB", xrCreatePassthroughFB_);
   XR_PROC(instance_, "xrDestroyPassthroughFB", xrDestroyPassthroughFB_);
@@ -255,6 +300,10 @@ void XrApp::pollEvents(bool* exitRequested) {
 void XrApp::handleSessionState(XrSessionState state, bool* exitRequested) {
   LOGI("session state %d -> %d", state_, state);
   state_ = state;
+  // Surface swapchains may only receive frames while VISIBLE/FOCUSED, and must
+  // be idle before xrEndSession; closing the gate waits for in-flight writes.
+  VideoDecoder::instance().setRenderAllowed(state == XR_SESSION_STATE_VISIBLE ||
+                                            state == XR_SESSION_STATE_FOCUSED);
   switch (state) {
     case XR_SESSION_STATE_READY: {
       XrSessionBeginInfo bi{XR_TYPE_SESSION_BEGIN_INFO};
@@ -324,11 +373,20 @@ void XrApp::renderFrame() {
   XrCompositionLayerPassthroughFB ptLayer{XR_TYPE_COMPOSITION_LAYER_PASSTHROUGH_FB};
   XrCompositionLayerCylinderKHR cylLayer{XR_TYPE_COMPOSITION_LAYER_CYLINDER_KHR};
   XrCompositionLayerQuad quadLayer{XR_TYPE_COMPOSITION_LAYER_QUAD};
+  // MediaCodec fills the surface top row first; the compositor reads images
+  // bottom row first (GL convention), so video needs a vertical flip.
+  XrCompositionLayerImageLayoutFB flipY{XR_TYPE_COMPOSITION_LAYER_IMAGE_LAYOUT_FB};
+  flipY.flags = XR_COMPOSITION_LAYER_IMAGE_LAYOUT_VERTICAL_FLIP_BIT_FB;
   const XrCompositionLayerBaseHeader* layers[2];
   uint32_t layerCount = 0;
 
   if (fs.shouldRender) {
-    drawPanel();
+    // Show the stream once its first frame is on the surface; until then (and
+    // between streams) the GL test panel stands in.
+    const bool showVideo = hasSurfaceSwapchain_ && VideoDecoder::instance().hasFrame();
+    if (!showVideo) drawPanel();
+    const Swapchain& screen = showVideo ? video_ : panel_;
+    const void* screenNext = (showVideo && hasImageLayout_) ? &flipY : nullptr;
 
     if (hasPassthrough_) {
       ptLayer.flags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
@@ -337,9 +395,10 @@ void XrApp::renderFrame() {
       layers[layerCount++] = reinterpret_cast<const XrCompositionLayerBaseHeader*>(&ptLayer);
     }
 
-    const XrSwapchainSubImage sub{panel_.handle, {{0, 0}, {panel_.width, panel_.height}}, 0};
-    const float aspect = static_cast<float>(panel_.width) / panel_.height;
+    const XrSwapchainSubImage sub{screen.handle, {{0, 0}, {screen.width, screen.height}}, 0};
+    const float aspect = static_cast<float>(screen.width) / screen.height;
     if (hasCylinder_) {
+      cylLayer.next = screenNext;
       cylLayer.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
       cylLayer.space = localSpace_;
       cylLayer.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
@@ -350,6 +409,7 @@ void XrApp::renderFrame() {
       cylLayer.aspectRatio = aspect;
       layers[layerCount++] = reinterpret_cast<const XrCompositionLayerBaseHeader*>(&cylLayer);
     } else {
+      quadLayer.next = screenNext;
       quadLayer.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
       quadLayer.space = localSpace_;
       quadLayer.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
@@ -369,6 +429,10 @@ void XrApp::renderFrame() {
 }
 
 void XrApp::shutdown() {
+  // Stop the decoder writing into the surface before the surface goes away.
+  VideoDecoder::instance().setWindow(nullptr);
+  if (video_.handle != XR_NULL_HANDLE) xrDestroySwapchain(video_.handle);
+  video_ = {};
   if (passthroughLayer_ != XR_NULL_HANDLE) xrDestroyPassthroughLayerFB_(passthroughLayer_);
   if (passthrough_ != XR_NULL_HANDLE) xrDestroyPassthroughFB_(passthrough_);
   if (!panel_.framebuffers.empty())

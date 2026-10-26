@@ -1,5 +1,5 @@
-// moonlight-common-c glue. Phase 3: connect and count what arrives; Phase 4
-// replaces the video callbacks with the MediaCodec decoder.
+// moonlight-common-c glue: video goes to the zero-copy MediaCodec decoder;
+// audio is still only counted (Phase 5 plays it).
 #include <android/log.h>
 #include <jni.h>
 
@@ -10,6 +10,7 @@
 #include <cstring>
 #include <string>
 
+#include "stream/video_decoder.h"
 #include "util/log.h"
 
 namespace {
@@ -25,7 +26,7 @@ struct SessionStrings {
 int drSetup(int videoFormat, int width, int height, int redrawRate, void*, int) {
   LOGI("video setup: format 0x%x, %dx%d @ %d fps", videoFormat, width, height, redrawRate);
   gFrames = 0;
-  return 0;
+  return VideoDecoder::instance().setup(videoFormat, width, height, redrawRate);
 }
 
 int drSubmit(PDECODE_UNIT du) {
@@ -36,8 +37,10 @@ int drSubmit(PDECODE_UNIT du) {
          du->frameType == FRAME_TYPE_IDR ? "IDR" : "P", du->frameHostProcessingLatency / 10.0,
          (du->enqueueTimeUs - du->receiveTimeUs) / 1000.0);
   }
-  return DR_OK;
+  return VideoDecoder::instance().submit(du);
 }
+
+void drCleanup() { VideoDecoder::instance().cleanup(); }
 
 int arInit(int audioConfiguration, const POPUS_MULTISTREAM_CONFIGURATION opus, void*, int) {
   LOGI("audio setup: %d Hz, %d channels, %d samples/frame", opus->sampleRate, opus->channelCount,
@@ -122,6 +125,7 @@ Java_io_github_hayitsjose_deskray_stream_NativeBridge_startStream(
   LiInitializeVideoCallbacks(&video);
   video.setup = drSetup;
   video.submitDecodeUnit = drSubmit;
+  video.cleanup = drCleanup;
   video.capabilities = CAPABILITY_DIRECT_SUBMIT;
 
   AUDIO_RENDERER_CALLBACKS audio;
