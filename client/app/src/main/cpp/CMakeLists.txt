@@ -3,6 +3,11 @@ project(deskray CXX C)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Debug APKs still have to stream in real time (opus warns it is "very slow"
+# at -O0): optimize every target, keep the debug symbols.
+string(APPEND CMAKE_C_FLAGS_DEBUG " -O2")
+string(APPEND CMAKE_CXX_FLAGS_DEBUG " -O2")
+
 set(THIRD_PARTY ${CMAKE_CURRENT_SOURCE_DIR}/../../../../third_party)
 
 find_package(OpenXR REQUIRED CONFIG)   # prefab package from openxr_loader_for_android
@@ -23,6 +28,10 @@ set(USE_MBEDTLS ON CACHE BOOL "" FORCE)
 set(BUILD_SHARED_LIBS OFF)
 add_subdirectory(${THIRD_PARTY}/moonlight-common-c moonlight-common-c EXCLUDE_FROM_ALL)
 
+set(OPUS_INSTALL_PKG_CONFIG_MODULE OFF CACHE BOOL "" FORCE)
+set(OPUS_INSTALL_CMAKE_CONFIG_MODULE OFF CACHE BOOL "" FORCE)
+add_subdirectory(${THIRD_PARTY}/opus opus EXCLUDE_FROM_ALL)
+
 file(GLOB_RECURSE SRC CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp)
 add_library(deskray SHARED ${SRC})
 target_include_directories(deskray PRIVATE
@@ -30,7 +39,7 @@ target_include_directories(deskray PRIVATE
   ${THIRD_PARTY}/moonlight-common-c/src)
 target_compile_options(deskray PRIVATE -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers)
 target_link_libraries(deskray
-  native_app_glue OpenXR::openxr_loader moonlight-common-c
-  android log EGL GLESv3 mediandk)
+  native_app_glue OpenXR::openxr_loader moonlight-common-c opus
+  android log EGL GLESv3 mediandk aaudio)
 # Keep the glue's entry point: nothing references it but the Android loader.
 target_link_options(deskray PRIVATE -u ANativeActivity_onCreate)

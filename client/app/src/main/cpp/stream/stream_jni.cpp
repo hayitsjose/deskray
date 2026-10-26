@@ -1,5 +1,5 @@
-// moonlight-common-c glue: video goes to the zero-copy MediaCodec decoder;
-// audio is still only counted (Phase 5 plays it).
+// moonlight-common-c glue: video goes to the zero-copy MediaCodec decoder,
+// audio to Opus + AAudio.
 #include <android/log.h>
 #include <jni.h>
 
@@ -10,13 +10,13 @@
 #include <cstring>
 #include <string>
 
+#include "stream/audio_renderer.h"
 #include "stream/video_decoder.h"
 #include "util/log.h"
 
 namespace {
 
 std::atomic<uint64_t> gFrames{0};
-std::atomic<uint64_t> gAudioPackets{0};
 
 // SERVER_INFORMATION holds raw pointers; keep the strings alive for the session.
 struct SessionStrings {
@@ -43,15 +43,14 @@ int drSubmit(PDECODE_UNIT du) {
 void drCleanup() { VideoDecoder::instance().cleanup(); }
 
 int arInit(int audioConfiguration, const POPUS_MULTISTREAM_CONFIGURATION opus, void*, int) {
-  LOGI("audio setup: %d Hz, %d channels, %d samples/frame", opus->sampleRate, opus->channelCount,
-       opus->samplesPerFrame);
-  gAudioPackets = 0;
-  return 0;
+  return AudioRenderer::instance().init(*opus);
 }
 
-void arDecodeAndPlay(char*, int) {
-  if (++gAudioPackets % 1000 == 0) LOGI("audio packets: %llu", static_cast<unsigned long long>(gAudioPackets.load()));
+void arDecodeAndPlay(char* data, int length) {
+  AudioRenderer::instance().decodeAndPlay(reinterpret_cast<const unsigned char*>(data), length);
 }
+
+void arCleanup() { AudioRenderer::instance().cleanup(); }
 
 void clStageStarting(int stage) { LOGI("stage starting: %s", LiGetStageName(stage)); }
 void clStageComplete(int stage) { LOGI("stage complete: %s", LiGetStageName(stage)); }
@@ -132,6 +131,7 @@ Java_io_github_hayitsjose_deskray_stream_NativeBridge_startStream(
   LiInitializeAudioCallbacks(&audio);
   audio.init = arInit;
   audio.decodeAndPlaySample = arDecodeAndPlay;
+  audio.cleanup = arCleanup;
   audio.capabilities = CAPABILITY_DIRECT_SUBMIT;
 
   CONNECTION_LISTENER_CALLBACKS listener;

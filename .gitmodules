@@ -5,3 +5,7 @@
 	path = client/third_party/mbedtls
 	url = https://github.com/Mbed-TLS/mbedtls
 	shallow = true
+[submodule "client/third_party/opus"]
+	path = client/third_party/opus
+	url = https://github.com/xiph/opus
+	shallow = true
