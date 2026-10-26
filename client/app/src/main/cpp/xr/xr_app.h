@@ -1,6 +1,7 @@
 #pragma once
 #include <vector>
 
+#include "xr/controller_input.h"
 #include "xr/egl.h"
 #include "xr/xr_common.h"
 
@@ -51,6 +52,7 @@ class XrApp {
   bool hasSurfaceSwapchain_ = false;
   bool hasImageLayout_ = false;
 
+  ControllerInput controllers_;
   Swapchain panel_;  // GL test pattern
   Swapchain video_;  // compositor-owned surface MediaCodec decodes into
   JavaVM* vm_ = nullptr;

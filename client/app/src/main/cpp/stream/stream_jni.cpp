@@ -11,12 +11,14 @@
 #include <string>
 
 #include "stream/audio_renderer.h"
+#include "stream/stream_state.h"
 #include "stream/video_decoder.h"
 #include "util/log.h"
 
 namespace {
 
 std::atomic<uint64_t> gFrames{0};
+std::atomic<bool> gConnected{false};
 
 // SERVER_INFORMATION holds raw pointers; keep the strings alive for the session.
 struct SessionStrings {
@@ -55,8 +57,12 @@ void arCleanup() { AudioRenderer::instance().cleanup(); }
 void clStageStarting(int stage) { LOGI("stage starting: %s", LiGetStageName(stage)); }
 void clStageComplete(int stage) { LOGI("stage complete: %s", LiGetStageName(stage)); }
 void clStageFailed(int stage, int err) { LOGE("stage failed: %s (error %d)", LiGetStageName(stage), err); }
-void clConnectionStarted() { LOGI("connection started"); }
+void clConnectionStarted() {
+  gConnected = true;
+  LOGI("connection started");
+}
 void clConnectionTerminated(int err) {
+  gConnected = false;
   if (err == ML_ERROR_GRACEFUL_TERMINATION) LOGI("connection ended by host");
   else LOGE("connection terminated: error %d", err);
 }
@@ -77,6 +83,8 @@ std::string toString(JNIEnv* env, jstring s) {
 }
 
 }  // namespace
+
+bool streamConnected() { return gConnected.load(); }
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_io_github_hayitsjose_deskray_stream_NativeBridge_launchQueryParameters(JNIEnv* env, jobject) {
@@ -151,6 +159,7 @@ Java_io_github_hayitsjose_deskray_stream_NativeBridge_startStream(
 
 extern "C" JNIEXPORT void JNICALL
 Java_io_github_hayitsjose_deskray_stream_NativeBridge_stopStream(JNIEnv*, jobject) {
+  gConnected = false;
   LiStopConnection();
   LOGI("stream stopped; %llu video frames received", static_cast<unsigned long long>(gFrames.load()));
 }

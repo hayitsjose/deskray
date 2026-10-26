@@ -41,6 +41,7 @@ bool XrApp::init(android_app* app) {
     LOGW("no video surface; streams will not be shown");
     hasSurfaceSwapchain_ = false;
   }
+  if (!controllers_.init(instance_, session_)) LOGW("controller input unavailable");
   if (hasPassthrough_ && !createPassthrough()) {
     LOGW("passthrough unavailable; continuing with a black background");
     hasPassthrough_ = false;
@@ -380,6 +381,12 @@ void XrApp::renderFrame() {
   const XrCompositionLayerBaseHeader* layers[2];
   uint32_t layerCount = 0;
 
+  if (fs.shouldRender && state_ == XR_SESSION_STATE_FOCUSED && hasCylinder_) {
+    const ScreenGeometry screen{{0.0f, -kPanelDropM, 0.0f}, kPanelRadiusM, kPanelWidthM / kPanelRadiusM,
+                                static_cast<float>(kVideoW) / kVideoH};
+    controllers_.update(localSpace_, fs.predictedDisplayTime, screen, kVideoW, kVideoH);
+  }
+
   if (fs.shouldRender) {
     // Show the stream once its first frame is on the surface; until then (and
     // between streams) the GL test panel stands in.
@@ -429,6 +436,7 @@ void XrApp::renderFrame() {
 }
 
 void XrApp::shutdown() {
+  controllers_.destroy();
   // Stop the decoder writing into the surface before the surface goes away.
   VideoDecoder::instance().setWindow(nullptr);
   if (video_.handle != XR_NULL_HANDLE) xrDestroySwapchain(video_.handle);

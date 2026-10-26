@@ -1,5 +1,7 @@
 #include <android_native_app_glue.h>
 
+#include "stream/keyboard.h"
+#include "stream/mouse.h"
 #include "util/log.h"
 #include "xr/xr_app.h"
 
@@ -18,6 +20,15 @@ void onAppCmd(android_app* app, int32_t cmd) {
   }
 }
 
+// Physical keyboard, mouse and touchpad input goes to the host while a stream runs.
+int32_t onInputEvent(android_app*, AInputEvent* event) {
+  switch (AInputEvent_getType(event)) {
+    case AINPUT_EVENT_TYPE_KEY: return forwardKeyEvent(event) ? 1 : 0;
+    case AINPUT_EVENT_TYPE_MOTION: return forwardMotionEvent(event) ? 1 : 0;
+    default: return 0;
+  }
+}
+
 }  // namespace
 
 void android_main(android_app* app) {
@@ -27,6 +38,7 @@ void android_main(android_app* app) {
   AppState state;
   app->userData = &state;
   app->onAppCmd = onAppCmd;
+  app->onInputEvent = onInputEvent;
 
   XrApp xr;
   bool alive = xr.init(app);
