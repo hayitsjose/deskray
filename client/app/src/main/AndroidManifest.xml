@@ -24,6 +24,7 @@
        after pairing uses mutual TLS with the pinned host certificate. -->
   <application
       android:label="Deskray"
+      android:allowBackup="false"
       android:icon="@drawable/ic_launcher"
       android:theme="@android:style/Theme.Material.NoActionBar"
       android:usesCleartextTraffic="true">
